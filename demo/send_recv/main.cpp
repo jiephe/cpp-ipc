@@ -17,10 +17,11 @@ ipc::channel *ipc__ = nullptr;
 void do_send(int size, int interval) {
     ipc::channel ipc {"ipc", ipc::sender};
     ipc__ = &ipc;
-    std::string buffer(size, 'A');
+    int index = 1;
     while (!is_quit__.load(std::memory_order_acquire)) {
+        std::string buffer(size + index++, 'A');
         std::cout << "send size: " << buffer.size() + 1 << "\n";
-        ipc.send(buffer, 0/*tm*/);
+        bool bRet = ipc.send(buffer, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(interval));
     }
 }
@@ -39,10 +40,21 @@ void do_recv(int interval) {
     }
 }
 
+void do_recv_ex() {
+    ipc::channel ipc {"ipc", ipc::receiver};
+    ipc__ = &ipc;
+    while (!is_quit__.load(std::memory_order_acquire)) {
+        ipc::buff_t recv = ipc.recv();
+        std::string str((char*)recv.data(), recv.size());
+        std::cout << "recv data: " << str << " recv size: " << recv.size() << "\n";
+        if (is_quit__.load(std::memory_order_acquire)) return;
+    }
+}
+
 } // namespace
 
 int main(int argc, char ** argv) {
-    if (argc < 3) return -1;
+    //if (argc < 3) return -1;
 
     auto exit = [](int) {
         is_quit__.store(true, std::memory_order_release);
@@ -52,14 +64,13 @@ int main(int argc, char ** argv) {
     ::signal(SIGABRT , exit);
     ::signal(SIGSEGV , exit);
     ::signal(SIGTERM , exit);
-#if defined(WIN64) || defined(_WIN64) || defined(__WIN64__) || \
-    defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__) || \
-    defined(WINCE) || defined(_WIN32_WCE)
-    ::signal(SIGBREAK, exit);
-#else
     ::signal(SIGHUP  , exit);
-#endif
 
+    //do_recv_ex();
+
+    do_send(60, 1500);
+
+    return 0;
     std::string mode {argv[1]};
     if (mode == "send") {
         if (argc < 4) return -1;
